@@ -1,0 +1,40 @@
+---
+title: "pca poisson"
+output: html_document
+---
+
+```{r}
+##NB: Install countreg using this link in the console before running
+##install.packages("countreg", repos="http://R-Forge.R-project.org")
+
+
+library(pscl)
+library(data.table)
+library(DT)
+library(countreg)
+
+dat<-fread("/Users/11kolop/Downloads/chicago_by_census_with_transportation (1).csv")
+dat.hom<-dat[dat$ofns_desc=="criminal homicide",]
+pca <- princomp(na.omit(dat.hom)[,c(4:15)], cor = TRUE)
+
+mod.zero.inflated.poisson<-zeroinfl(n ~ foreign_share2010 + share_black2010 + share_hisp2010 + singleparent_share2010+mail_return_rate2010 + scale(transp/sqmi), data = na.omit(dat.hom),dist="poisson")
+
+mod.poisson<-glm(n ~ foreign_share2010 + share_black2010 + share_hisp2010 + singleparent_share2010+mail_return_rate2010 + scale(transp/sqmi), data = na.omit(dat.hom),family="poisson")
+
+mod.pca.zero.inflated.poisson<-zeroinfl(na.omit(dat.hom)$n~scale(na.omit(dat.hom)$transp/na.omit(dat.hom)$sqmi)+pca$scores[,1] + pca$scores[,2]+pca$scores[,3] + pca$scores[,4],dist="poisson")
+
+mod.pca.poisson<-glm(na.omit(dat.hom)$n~scale(na.omit(dat.hom)$transp/na.omit(dat.hom)$sqmi)+pca$scores[,1] + pca$scores[,2]+pca$scores[,3] + pca$scores[,4],family="poisson")
+
+mod.zero.inflated.nb<-zeroinfl(n ~ foreign_share2010 + share_black2010 + share_hisp2010 + singleparent_share2010+mail_return_rate2010 + scale(transp/sqmi), data = na.omit(dat.hom),dist="negbin")
+
+mod.pca.zero.inflated.nb<-zeroinfl(na.omit(dat.hom)$n~scale(na.omit(dat.hom)$transp/na.omit(dat.hom)$sqmi)+pca$scores[,1] + pca$scores[,2]+pca$scores[,3] + pca$scores[,4],dist="negbin")
+
+BIC(mod.poisson,mod.zero.inflated.poisson,mod.pca.poisson,mod.pca.zero.inflated.poisson,mod.zero.inflated.nb,mod.pca.zero.inflated.nb)
+
+qqrplot(mod.pca.zero.inflated.nb)
+
+summary(mod.pca.zero.inflated.nb)
+
+rootogram(mod.pca.zero.inflated.nb)
+
+```
