@@ -1,0 +1,45 @@
+---
+title: "Baltimore Models"
+output: html_document
+---
+
+```{r}
+library(DT)
+library(data.table)
+library(magrittr)
+library(sf)
+library(pscl)
+library(countreg)
+library(GISTools)
+library(gtfsr)
+library(sp)
+library(stringi)
+
+```
+
+```{r}
+chicago_final<-fread("/Users/11kolop/Desktop/baltimore_final.csv")[,-c(1:2)]
+dat.hom.chicago<-chicago_final[chicago_final$ofns_desc=="criminal homicide",]
+dat.hom.chicago$transp<-as.numeric(as.character(dat.hom.chicago$transp))
+pca <- princomp(na.omit(dat.hom.chicago)[,c(4:15)], cor = TRUE)
+
+mod.zero.inflated.poisson<-zeroinfl(n ~ foreign_share2010 + share_black2010 + share_hisp2010 + singleparent_share2010+mail_return_rate2010 + scale(transp/sqmi), data = na.omit(dat.hom.chicago),dist="poisson")
+
+mod.poisson<-glm(n ~ foreign_share2010 + share_black2010 + share_hisp2010 + singleparent_share2010+mail_return_rate2010 + scale(transp/sqmi), data = na.omit(dat.hom.chicago),family="poisson")
+
+mod.pca.zero.inflated.poisson<-zeroinfl(na.omit(dat.hom.chicago)$n~scale(na.omit(dat.hom.chicago)$transp/na.omit(dat.hom.chicago)$sqmi)+pca$scores[,1] + pca$scores[,2]+pca$scores[,3] + pca$scores[,4],dist="poisson")
+
+mod.pca.poisson<-glm(na.omit(dat.hom.chicago)$n~scale(na.omit(dat.hom.chicago)$transp/na.omit(dat.hom.chicago)$sqmi)+pca$scores[,1] + pca$scores[,2]+pca$scores[,3] + pca$scores[,4],family="poisson")
+
+mod.zero.inflated.nb<-zeroinfl(n ~ foreign_share2010 + share_black2010 + share_hisp2010 + singleparent_share2010+mail_return_rate2010 + scale(transp/sqmi), data = na.omit(dat.hom.chicago),dist="negbin")
+
+mod.pca.zero.inflated.nb<-zeroinfl(na.omit(dat.hom.chicago)$n~scale(na.omit(dat.hom.chicago)$transp/na.omit(dat.hom.chicago)$sqmi)+pca$scores[,1] + pca$scores[,2]+pca$scores[,3] + pca$scores[,4],dist="negbin")
+
+BIC(mod.poisson,mod.zero.inflated.poisson,mod.pca.poisson,mod.pca.zero.inflated.poisson,mod.zero.inflated.nb,mod.pca.zero.inflated.nb)
+
+qqrplot(mod.pca.zero.inflated.nb)
+
+summary(mod.pca.zero.inflated.nb)
+
+rootogram(mod.pca.zero.inflated.nb)
+```
