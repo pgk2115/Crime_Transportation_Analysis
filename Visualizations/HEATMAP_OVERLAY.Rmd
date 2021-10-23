@@ -1,0 +1,206 @@
+---
+title: "Heatmap Overlays"
+output: html_document
+---
+
+```{r}
+library(DT)
+library(data.table)
+library(magrittr)
+library(sf)
+library(tidyverse)
+library(gtfsr)
+library(leaflet.extras)
+library(dplyr)
+
+dat.baltimore<-fread("/Users/11kolop/Downloads/Baltimore_cleaned.csv")
+dat.chapel_hill<-fread("/Users/11kolop/Downloads/Chapel_Hill_Cleaned.csv")
+dat.chicago<-fread("/Users/11kolop/Downloads/chicago_cleaned.csv")
+dat.cincinnati<-fread("/Users/11kolop/Downloads/cincinnati_cleaned.csv")
+dat.la<-fread("/Users/11kolop/Downloads/la_cleaned.csv")
+dat.nyc<-fread("/Users/11kolop/Downloads/nyc_cleaned.csv")
+
+
+
+gtfs_routes_sf <- function(gtfs) {
+    shape_key <- gtfs$trips_df %>%
+        select(route_id, shape_id) %>%
+        unique()
+    route_key <- gtfs$routes_df %>%
+        select(route_id, route_short_name) %>%
+        mutate(route_short_name = paste("route", route_short_name)) %>%
+        inner_join(shape_key)
+        if ( !is.null(gtfs$routes_df$route_color) ) { # extract if they exist
+        route_key %<>% inner_join(select(gtfs$routes_df, route_color, route_id) )
+    }
+    else {
+        route_key %<>% mutate(route_color = rep(ggsci::pal_d3()(10),
+                                                length.out = nrow(route_key)))
+    }
+        sfc <- gtfs$shapes_df %>% 
+        split(.$shape_id) %>% 
+        map(~ select(., shape_pt_lon, shape_pt_lat) %>% 
+            as.matrix %>% 
+            st_linestring) %>%
+        st_sfc(crs = 4326) 
+
+    unique(gtfs$shapes_df$shape_id) %>%
+        sort() %>% 
+        st_sf(shape_id = ., geometry = sfc) %>%
+        inner_join(route_key)
+}
+
+```
+
+```{r}
+cincinnati_gtfs_obj<-import_gtfs("https://transitfeeds.com/p/cincinnati-metro/218/latest/download")  
+chapel_hill_gtfs_obj <- import_gtfs("https://transitfeeds.com/p/chapel-hill-transit/367/latest/download")  
+chicago_gtfs_obj <- import_gtfs("http://gtfs.s3.amazonaws.com/chicago-transit-authority_20160416_0123.zip")
+chicago_gtfs_obj$agency_df$agency_id<-"230"
+chicago_gtfs_obj$agency_df<-chicago_gtfs_obj$agency_df[,c(7,1:6)]
+chicago_gtfs_obj$routes_df$agency_id<-"230"
+chicago_gtfs_obj$routes_df<-chicago_gtfs_obj$routes_df[,c(8,1:7)]
+la_gtfs_obj <-import_gtfs("https://transitfeeds.com/p/la-metro/184/latest/download")
+la_gtfs_obj$routes_df$agency_id<-"LACMTA"
+baltimore_gtfs<-import_gtfs("https://transitfeeds.com/p/mta-maryland/247/latest/download")
+bronx_gtfs<-import_gtfs("https://transitfeeds.com/p/mta/81/latest/download")
+brooklyn_gtfs<-import_gtfs("https://transitfeeds.com/p/mta/80/latest/download")
+manhattan_gtfs<-import_gtfs("https://transitfeeds.com/p/mta/82/latest/download")
+queens_gtfs<-import_gtfs("https://transitfeeds.com/p/mta/83/latest/download")
+staten_island_gtfs<-import_gtfs("https://transitfeeds.com/p/mta/84/latest/download")
+nyc_subway_gtfs<-import_gtfs("https://transitfeeds.com/p/mta/79/latest/download")
+```
+
+```{r}
+cincinnati <- gtfs_routes_sf(cincinnati_gtfs_obj)
+names(cincinnati$geometry)<-NULL
+cincinnati.stops<-cincinnati_gtfs_obj$stops_df[,c(3,5:6)]
+rm(cincinnati_gtfs_obj)
+
+chapel_hill<-gtfs_routes_sf(chapel_hill_gtfs_obj)
+names(chapel_hill$geometry)<-NULL
+chapel_hill.stops<-chapel_hill_gtfs_obj$stops_df[,c(4,6:7)]
+rm(chapel_hill_gtfs_obj)
+
+chicago<-gtfs_routes_sf(chicago_gtfs_obj)
+names(chicago$geometry)<-NULL
+chicago.stops<-chicago_gtfs_obj$stops_df[,c(3,5:6)]
+rm(chicago_gtfs_obj)
+
+la<-gtfs_routes_sf(la_gtfs_obj)
+names(la$geometry)<-NULL
+la.stops<-la_gtfs_obj$stops_df[,c(3,5:6)]
+rm(la_gtfs_obj)
+
+baltimore<-gtfs_routes_sf(baltimore_gtfs)
+names(baltimore$geometry)<-NULL
+baltimore.stops<-baltimore_gtfs$stops_df[,c(3,5:6)]
+rm(baltimore_gtfs)
+
+bronx<-gtfs_routes_sf(bronx_gtfs)
+names(bronx$geometry)<-NULL
+bronx.stops<-bronx_gtfs$stops_df[,c(2,4:5)]
+rm(bronx_gtfs)
+
+manhattan<-gtfs_routes_sf(manhattan_gtfs)
+names(manhattan$geometry)<-NULL
+manhattan.stops<-manhattan_gtfs$stops_df[,c(2,4:5)]
+rm(manhattan_gtfs)
+
+brooklyn<-gtfs_routes_sf(brooklyn_gtfs)
+names(brooklyn$geometry)<-NULL
+brooklyn.stops<-brooklyn_gtfs$stops_df[,c(2,4:5)]
+rm(brooklyn_gtfs)
+
+staten_island<-gtfs_routes_sf(staten_island_gtfs)
+names(staten_island$geometry)<-NULL
+staten_island.stops<-staten_island_gtfs$stops_df[,c(2,4:5)]
+rm(staten_island_gtfs)
+
+queens<-gtfs_routes_sf(queens_gtfs)
+names(queens$geometry)<-NULL
+queens.stops<-queens_gtfs$stops_df[,c(2,4:5)]
+rm(queens_gtfs)
+
+nyc_subway<-gtfs_routes_sf(nyc_subway_gtfs)
+names(nyc_subway$geometry)<-NULL
+nyc_subway.stops<-nyc_subway_gtfs$stops_df[,c(3,5:6)]
+rm(nyc_subway_gtfs)
+```
+
+```{r}
+factpal <- colorFactor(rainbow(length(unique(baltimore$route_short_name))), baltimore$route_short_name)
+baltimore$route_color<-factpal(baltimore$route_short_name)
+
+leaflet() %>%
+     addTiles() %>%
+     addPolylines(data=baltimore,color = ~as.factor(route_color),
+                  label = ~as.character(route_short_name),weight= 2) %>%
+      addCircleMarkers(lng=~stop_lon,lat=~stop_lat,data = baltimore.stops,color = "black", radius = 5, weight = 3,label = ~as.character(stop_name)) %>%
+      addHeatmap(group="heat", lng=~longitude, lat=~latitude,dat=dat.baltimore, max=.9,blur = 60)  %>%
+  fitBounds(lng1=min(dat.baltimore$longitude),lng2=max(dat.baltimore$longitude),lat1=min(dat.baltimore$latitude),lat2=max(dat.baltimore$latitude))
+```
+
+```{r}
+factpal <- colorFactor(rainbow(length(unique(chapel_hill$route_short_name))), chapel_hill$route_short_name)
+chapel_hill$route_color<-factpal(chapel_hill$route_short_name)
+
+leaflet() %>%
+     addTiles() %>%
+     addPolylines(data=chapel_hill,color = ~as.factor(route_color),
+                  label = ~as.character(route_short_name),weight= 2) %>%
+      addCircleMarkers(lng=~stop_lon,lat=~stop_lat,data = chapel_hill.stops,color = "black", radius = 5, weight = 3,label = ~as.character(stop_name)) %>%
+     addHeatmap(group="heat", lng=~longitude, lat=~latitude,dat=dat.chapel_hill, max=.9,blur = 60)  %>%
+  fitBounds(lng1=min(dat.chapel_hill$longitude),lng2=max(dat.chapel_hill$longitude),lat1=min(dat.chapel_hill$latitude),lat2=max(dat.chapel_hill$latitude))
+```
+
+```{r}
+factpal <- colorFactor(rainbow(length(unique(chicago$route_short_name))), chicago$route_short_name)
+chicago$route_color<-factpal(chicago$route_short_name)
+
+leaflet() %>%
+     addTiles() %>%
+     addPolylines(data=chicago,color = ~as.factor(route_color),
+                  label = ~as.character(route_short_name),weight= 2) %>%
+      addCircleMarkers(lng=~stop_lon,lat=~stop_lat,data = chicago.stops,color = "black", radius = 5, weight = 3,label = ~as.character(stop_name)) %>%
+      addHeatmap(group="heat", lng=~longitude, lat=~latitude,dat=dat.chicago, max=.9,blur = 60)  %>%
+  fitBounds(lng1=min(dat.chicago$longitude),lng2=max(dat.chicago$longitude),lat1=min(dat.chicago$latitude),lat2=max(dat.chicago$latitude))
+```
+
+```{r}
+factpal <- colorFactor(rainbow(length(unique(cincinnati$route_short_name))), cincinnati$route_short_name)
+cincinnati$route_color<-factpal(cincinnati$route_short_name)
+
+leaflet() %>%
+     addTiles() %>%
+     addPolylines(data=cincinnati,color = ~as.factor(route_color),
+                  label = ~as.character(route_short_name),weight= 2) %>%
+    addCircleMarkers(lng=~stop_lon,lat=~stop_lat,data = cincinnati.stops,color = "black", radius = 5, weight = 3,label = ~as.character(stop_name)) %>%
+      addHeatmap(group="heat", lng=~longitude, lat=~latitude,dat=dat.cincinnati, max=.9,blur = 60)  %>%
+  fitBounds(lng1=min(dat.cincinnati$longitude),lng2=max(dat.cincinnati$longitude),lat1=min(dat.cincinnati$latitude),lat2=max(dat.cincinnati$latitude))
+```
+
+```{r}
+factpal <- colorFactor(rainbow(length(unique(la$route_short_name))), la$route_short_name)
+la$route_color<-factpal(la$route_short_name)
+leaflet() %>%
+     addTiles() %>%
+     addPolylines(data=la,color = ~as.factor(route_color),
+                  label = ~as.character(route_short_name),weight= 2) %>%
+      addCircleMarkers(lng=~stop_lon,lat=~stop_lat,data = la.stops,color = "black", radius = 5, weight = 3,label = ~as.character(stop_name)) %>%
+      addHeatmap(group="heat", lng=~longitude, lat=~latitude,dat=dat.la, max=.9,blur = 60)  %>%
+  fitBounds(lng1=min(dat.la$longitude),lng2=max(dat.la$longitude),lat1=min(dat.la$latitude),lat2=max(dat.la$latitude))
+```
+
+```{r}
+factpal <- colorFactor(rainbow(length(unique(nyc_subway$route_short_name))), nyc_subway$route_short_name)
+nyc_subway$route_color<-factpal(nyc_subway$route_short_name)
+leaflet() %>%
+     addTiles() %>%
+     addPolylines(data=nyc_subway,color = ~as.factor(route_color),
+                  label = ~as.character(route_short_name),weight= 2) %>%
+      addCircleMarkers(lng=~stop_lon,lat=~stop_lat,data = nyc_subway.stops,color = "black", radius = 5, weight = 3,label = ~as.character(stop_name)) %>%
+      addHeatmap(group="heat", lng=~longitude, lat=~latitude,dat=dat.nyc, max=.9,blur = 60) %>%
+  fitBounds(lng1=min(dat.nyc$longitude),lng2=max(dat.nyc$longitude),lat1=min(dat.nyc$latitude),lat2=max(dat.nyc$latitude))
+```
+
